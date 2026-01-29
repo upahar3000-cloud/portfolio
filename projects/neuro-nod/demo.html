@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neuro-Nod Elite V4.4 | Optimized Suppression</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    
+    <style>
+        /* --- THEME CONFIGURATION --- */
+        :root { 
+            --neon: #00ffcc; 
+            --danger: #ff4444; 
+            --warn: #ffbb00; 
+            --bg: #0a0a0b; 
+            --panel: #151517; 
+        }
+
+        body { 
+            background: var(--bg); 
+            color: var(--neon); 
+            font-family: 'Segoe UI', sans-serif; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+        }
+
+        #ui-wrapper { 
+            display: flex; 
+            gap: 20px; 
+            padding: 20px; 
+            max-width: 1200px; 
+            flex-wrap: wrap; 
+            justify-content: center; 
+        }
+
+        /* --- VIDEO CONTAINER --- */
+        .vid-container { 
+            position: relative; 
+            border: 2px solid #222; 
+            border-radius: 15px; 
+            overflow: hidden; 
+            background: #000; 
+            width: 640px; 
+            height: 480px;
+        }
+        
+        video { 
+            transform: scaleX(-1); 
+            width: 100%; 
+            height: 100%; 
+            display: block; 
+        }
+
+        /* --- ALARM OVERLAY --- */
+        #overlay { 
+            display: none; 
+            position: absolute; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(255,0,0,0.4); 
+            border: 10px solid var(--danger); 
+            z-index: 10; 
+            justify-content: center; 
+            align-items: center; 
+            text-align: center; 
+            flex-direction: column; 
+        }
+
+        #mute-btn { 
+            margin-top: 20px; 
+            background: transparent; 
+            border: 2px solid white; 
+            color: white; 
+            padding: 10px 30px; 
+            font-size: 1.2rem; 
+            font-weight: bold; 
+            cursor: pointer; 
+            border-radius: 50px; 
+        }
+        #mute-btn:hover { background: white; color: var(--danger); }
+
+        /* --- CONTROL PANEL --- */
+        .panel { 
+            width: 350px; 
+            background: var(--panel); 
+            padding: 20px; 
+            border-radius: 15px; 
+            border-top: 4px solid var(--neon); 
+        }
+
+        .metric-card { 
+            background: #1e1e21; 
+            margin-bottom: 10px; 
+            padding: 12px; 
+            border-radius: 8px; 
+            position: relative; 
+        }
+
+        .label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
+        .value { font-family: 'Courier New', monospace; font-size: 1.3rem; color: #fff; }
+
+        .badge { 
+            position: absolute; top: 10px; right: 10px; 
+            font-size: 0.6rem; padding: 2px 6px; 
+            border-radius: 4px; background: #333; opacity: 0.3; 
+        }
+        .badge.active { background: var(--neon); color: #000; opacity: 1; }
+
+        .btn { 
+            background: var(--neon); 
+            color: #000; 
+            border: none; 
+            padding: 15px; 
+            width: 100%; 
+            font-weight: bold; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            text-transform: uppercase; 
+            margin-bottom: 10px; 
+        }
+        
+        /* Pause Button Specifics */
+        #pauseBtn { background: #333; color: #888; border: 1px solid #444; transition: 0.2s; }
+        #pauseBtn:hover { background: #444; color: white; }
+        #pauseBtn.suppressed { 
+            background: var(--warn); 
+            color: #000; 
+            border: none;
+            animation: pulse 1s infinite; 
+        }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+
+        .status-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; font-weight: bold; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: #444; }
+        .dot.active { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
+        .dot.warn { background: #ffff00; animation: blink 0.5s infinite; }
+        .dot.paused { background: var(--warn); box-shadow: none; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+    <h1 style="margin-top:20px; letter-spacing: 6px; font-weight: 300;">NEURO-NOD <span style="color:white; font-weight: 800;">ELITE V4.4</span></h1>
+
+    <div id="ui-wrapper">
+        <div class="vid-container">
+            <video id="input_video"></video>
+            <div id="overlay">
+                <h1 style="color:white; font-size: 3.5rem; margin:0;">DANGER</h1>
+                <p id="alert-reason" style="color:white; font-weight:bold;">INTERVENTION REQUIRED</p>
+                <button id="mute-btn">ACKNOWLEDGE ALARM</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <button id="startBtn" class="btn">Initialize System</button>
+            <button id="pauseBtn" class="btn">Temporary Pause (20s)</button>
+
+            <div class="status-bar">
+                <div id="status-dot" class="dot"></div>
+                <span id="status-text">SYSTEM STANDBY</span>
+            </div>
+
+            <div class="metric-card">
+                <div class="label">Ocular (EAR)</div>
+                <div class="value" id="ear-val">0.000</div>
+                <div id="sunglass-tag" class="badge">SUNGLASSES</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="label">Pitch Ratio (Chin/Forehead)</div>
+                <div class="value" id="ratio-val">0.000</div>
+                <div id="yaw-gate-tag" class="badge">MIRROR CHECK</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="label">Mouth (MAR)</div>
+                <div class="value" id="mar-val">0.000</div>
+            </div>
+            
+            <div id="priority-msg" style="background:rgba(0,255,204,0.1); padding:10px; border-radius:5px; text-align:center; font-size:0.8rem;">READY</div>
+        </div>
+    </div>
+
+<script>
+    // --- DOM ELEMENTS ---
+    const videoElement = document.getElementById('input_video');
+    const statusText = document.getElementById('status-text');
+    const statusDot = document.getElementById('status-dot');
+    const earVal = document.getElementById('ear-val');
+    const marVal = document.getElementById('mar-val');
+    const ratioVal = document.getElementById('ratio-val');
+    const priorityMsg = document.getElementById('priority-msg');
+    const overlay = document.getElementById('overlay');
+    const alertReason = document.getElementById('alert-reason');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const sunglassTag = document.getElementById('sunglass-tag');
+    const yawGateTag = document.getElementById('yaw-gate-tag');
+    const muteBtn = document.getElementById('mute-btn');
+
+    // --- VARIABLES & CONFIG ---
+    let audioCtx, osc, mainGain;
+    let muteUntil = 0;          // For post-alarm "Acknowledge"
+    let suppressionUntil = 0;   // For pre-action "Pause"
+
+    let isCalibrated = false, calibrationFrames = 0;
+    let baseEAR = 0, baseRatio = 0;
+    const earBuffer = [], ratioBuffer = [];
+    
+    // Smoothers (EMA)
+    let sEAR, sMAR, sRatio;
+    const ALPHA = 0.3; 
+
+    // Logic Timers
+    let eyeCloseStart = null;
+    let dropStart = null;
+    let yawnStart = null;
+    let sunglassCheckStart = null;
+    let sunglassMode = false;
+
+    // --- AUDIO ENGINE ---
+    function initAudio() {
+        if (audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        mainGain = audioCtx.createGain();
+        mainGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        mainGain.connect(audioCtx.destination);
+        
+        osc = audioCtx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime); 
+        osc.connect(mainGain);
+        osc.start();
+    }
+    
+    function setAlarm(active) {
+        if (!mainGain) return;
+        const nowCtx = audioCtx.currentTime;
+        const isMuted = performance.now() < muteUntil;
+        
+        mainGain.gain.cancelScheduledValues(nowCtx);
+        if (active && !isMuted) {
+            mainGain.gain.exponentialRampToValueAtTime(0.12, nowCtx + 0.05); 
+        } else {
+            mainGain.gain.exponentialRampToValueAtTime(0.0001, nowCtx + 0.1); 
+        }
+    }
+
+    // --- BUTTON HANDLERS ---
+    muteBtn.onclick = () => { 
+        muteUntil = performance.now() + 8000; // Snooze for 8s
+        setAlarm(false); 
+        overlay.style.display = "none"; 
+    };
+    
+    pauseBtn.onclick = () => {
+        suppressionUntil = performance.now() + 20000; // 20s Pause
+        pauseBtn.classList.add("suppressed");
+        
+        // CRITICAL: Reset alarm timers immediately so they don't fire 
+        // instantly when the 20s runs out.
+        eyeCloseStart = null;
+        dropStart = null;
+        yawnStart = null;
+        
+        // Force Alarm Off
+        overlay.style.display = "none";
+        setAlarm(false);
+    };
+
+    // --- MAIN LOOP ---
+    function onResults(results) {
+        const now = performance.now();
+
+        // 1. SUPPRESSION GATE (The Pause Logic)
+        if (now < suppressionUntil) {
+            const remaining = Math.ceil((suppressionUntil - now) / 1000);
+            pauseBtn.innerText = `SUPPRESSED: ${remaining}s`;
+            statusText.innerText = "ACTION PAUSED";
+            statusDot.className = "dot paused";
+            priorityMsg.innerText = "DRIVER ACTION DETECTED";
+            return; // STOP HERE - Do not run detection logic
+        } 
+        // 2. RECOVERY BLOCK (Runs once when time expires)
+        else if (pauseBtn.classList.contains("suppressed")) {
+            pauseBtn.classList.remove("suppressed");
+            pauseBtn.innerText = "TEMPORARY PAUSE (20s)";
+            statusText.innerText = "ACTIVE";
+            statusDot.className = "dot active";
+        }
+
+        // 3. SAFETY CHECK (Camera Loss)
+        if (!results.multiFaceLandmarks || !results.multiFaceLandmarks[0]) {
+            if (isCalibrated) { 
+                priorityMsg.innerText = "NO OPERATOR"; 
+                setAlarm(true); 
+                overlay.style.display = "flex"; 
+                alertReason.innerText = "VISUAL LOSS"; 
+            }
+            return;
+        }
+        
+        const lm = results.multiFaceLandmarks[0];
+        const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        const masterScale = dist(lm[133], lm[362]); // Distance between eyes outer corners
+        
+        // 4. METRIC CALCULATIONS
+        // EAR (Eye Aspect Ratio)
+        const leftE = dist(lm[159], lm[145]) / dist(lm[33], lm[133]);
+        const rightE = dist(lm[386], lm[374]) / dist(lm[362], lm[263]);
+        const currentEAR = Math.max(leftE, rightE);
+        
+        // MAR (Mouth Aspect Ratio)
+        const currentMAR = dist(lm[13], lm[14]) / masterScale;
+
+        // PITCH RATIO (Head Drop)
+        const currentRatio = dist(lm[1], lm[152]) / dist(lm[10], lm[1]);
+
+        // 5. SMOOTHING (Exponential Moving Average)
+        sEAR = (sEAR === undefined) ? currentEAR : (ALPHA * currentEAR) + (1 - ALPHA) * sEAR;
+        sMAR = (sMAR === undefined) ? currentMAR : (ALPHA * currentMAR) + (1 - ALPHA) * sMAR;
+        sRatio = (sRatio === undefined) ? currentRatio : (ALPHA * currentRatio) + (1 - ALPHA) * sRatio;
+
+        // Update UI Numbers
+        earVal.innerText = sEAR.toFixed(3);
+        marVal.innerText = sMAR.toFixed(3);
+        ratioVal.innerText = sRatio.toFixed(3);
+
+        // 6. CALIBRATION PHASE
+        if (!isCalibrated) {
+            statusText.innerText = "CALIBRATING...";
+            statusDot.className = "dot warn";
+            earBuffer.push(currentEAR); 
+            ratioBuffer.push(currentRatio);
+            
+            if (++calibrationFrames >= 80) { // Approx 3-4 seconds
+                // Trim outliers to get a stable baseline
+                const trim = (arr) => { 
+                    arr.sort((a,b)=>a-b); 
+                    // Take middle 50%
+                    return arr.slice(15, 65).reduce((a,b)=>a+b) / 50; 
+                };
+                baseEAR = trim(earBuffer) * 0.72;   // Threshold is 72% of baseline
+                baseRatio = trim(ratioBuffer) * 0.85; // Threshold is 85% of baseline
+                
+                isCalibrated = true;
+                statusText.innerText = "ACTIVE";
+                statusDot.className = "dot active";
+            }
+            return;
+        }
+
+        // 7. LOGIC GATES (Mirror Checking & Sunglasses)
+        
+        // Yaw Gate: Check if looking left/right (mirrors)
+        // Measures eye center vs nose bridge
+        const eyeCenterX = (lm[133].x + lm[362].x) / 2;
+        const yawOffset = Math.abs(eyeCenterX - lm[1].x) / masterScale;
+        const yawGateOpen = yawOffset < 0.22; // If < 0.22, driver is looking forward
+        
+        yawGateTag.classList.toggle("active", !yawGateOpen);
+
+        // Sunglasses Gate
+        if (sEAR < 0.08) {
+            if (!sunglassCheckStart) sunglassCheckStart = now;
+            if (now - sunglassCheckStart > 2500 && !sunglassMode) {
+                sunglassMode = true;
+                sunglassTag.classList.add("active");
+            }
+        } else { sunglassCheckStart = null; }
+
+        // 8. DECISION TREE (The Alarm Logic)
+        let alarmType = 0;
+        let msg = "MONITORING...";
+
+        // A. Head Drop (Requires 3 seconds sustain)
+        if (yawGateOpen) {
+            if (sRatio < baseRatio) {
+                if (!dropStart) dropStart = now;
+                if (now - dropStart > 3000) { alarmType = 1; msg = "HEAD DROP"; }
+            } else { dropStart = null; }
+        }
+
+        // B. Eyes Closed (Requires 0.85s sustain)
+        // Ignored if Sunglasses Mode is active
+        if (alarmType === 0 && !sunglassMode) {
+            if (sEAR < baseEAR) {
+                if (!eyeCloseStart) eyeCloseStart = now;
+                if (now - eyeCloseStart > 850) { alarmType = 2; msg = "EYES CLOSED"; }
+            } else { eyeCloseStart = null; }
+        }
+
+        // C. Yawn (Requires 1.8s sustain)
+        if (alarmType === 0 && sMAR > 0.55) {
+            if (!yawnStart) yawnStart = now;
+            if (now - yawnStart > 1800) { alarmType = 3; msg = "YAWN DETECTED"; }
+        } else { yawnStart = null; }
+
+        // 9. TRIGGER ALARM
+        if (alarmType > 0) {
+            overlay.style.display = "flex";
+            alertReason.innerText = msg;
+            priorityMsg.innerText = msg;
+            setAlarm(true);
+        } else {
+            overlay.style.display = "none";
+            setAlarm(false);
+            priorityMsg.innerText = msg;
+        }
+    }
+
+    // --- INIT ---
+    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6 });
+    faceMesh.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => { await faceMesh.send({image: videoElement}); },
+        width: 640, height: 480
+    });
+
+    startBtn.onclick = () => { 
+        initAudio(); 
+        camera.start().then(() => { startBtn.style.display = "none"; }); 
+    };
+</script>
+</body>
+</html>
